@@ -1,0 +1,6 @@
+gymnasium>=0.26.0
+stable-baselines3>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+tensorboard>=2.13.0
+gym-cellular-automata @ git+https://github.com/elbecerrasoto/gym-cellular-automata.git
