@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from stable_baselines3 import DQN, PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
+from stable_baselines3.common.utils import get_linear_fn
 
 from environment.forest_fire_wrapper import ForestFireWrapper
 from agents.random_agent import RandomAgent
@@ -33,7 +34,7 @@ RESULTS_DIR.mkdir(exist_ok=True)
 SEED = 42
 N_EVAL_EPISODES = 100
 MAX_STEPS = 200
-TOTAL_TIMESTEPS = 500_000
+TOTAL_TIMESTEPS = 1_000_000
 
 
 # =====================================================================
@@ -86,23 +87,19 @@ def train_agent(algo_name: str, seed: int = SEED, total_timesteps: int = TOTAL_T
         verbose=0,
     )
 
-    # Default hyperparameters
-    # Use a wider network for better representation
-    policy_kwargs = dict(net_arch=[128, 128])
-
     if algo_name == "DQN":
         params = dict(
             policy="MlpPolicy",
             env=env,
-            policy_kwargs=policy_kwargs,
-            learning_rate=5e-4,
+            policy_kwargs=dict(net_arch=[256, 256]),
+            learning_rate=1e-4,
             buffer_size=100_000,
-            learning_starts=2000,
-            batch_size=128,
-            gamma=0.995,
-            exploration_fraction=0.5,
-            exploration_final_eps=0.05,
-            target_update_interval=250,
+            learning_starts=5000,
+            batch_size=256,
+            gamma=0.99,
+            exploration_fraction=0.3,
+            exploration_final_eps=0.02,
+            target_update_interval=1000,
             train_freq=4,
             verbose=0,
             seed=seed,
@@ -115,16 +112,19 @@ def train_agent(algo_name: str, seed: int = SEED, total_timesteps: int = TOTAL_T
         params = dict(
             policy="MlpPolicy",
             env=env,
-            policy_kwargs=policy_kwargs,
-            learning_rate=3e-4,
-            n_steps=1024,
-            batch_size=64,
-            n_epochs=15,
-            gamma=0.995,
+            policy_kwargs=dict(
+                net_arch=dict(pi=[256, 256], vf=[256, 256]),
+            ),
+            learning_rate=get_linear_fn(3e-4, 1e-5, 1.0),
+            n_steps=2048,
+            batch_size=128,
+            n_epochs=10,
+            gamma=0.99,
             gae_lambda=0.95,
             clip_range=0.2,
-            ent_coef=0.02,
+            ent_coef=0.01,
             vf_coef=0.5,
+            max_grad_norm=0.5,
             verbose=0,
             seed=seed,
             tensorboard_log=str(RESULTS_DIR / "tensorboard"),

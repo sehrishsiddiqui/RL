@@ -48,11 +48,14 @@ class ForestFireWrapper(gym.Wrapper):
         self._max_steps = max_steps
         self._max_freeze = self._inner._max_freeze
         self._current_step = 0
+        self._prev_fire_count = 0
+        self._max_manhattan = self.nrows + self.ncols - 2
 
-        # 25 (grid) + 2 (ca_params) + 2 (position) + 1 (freeze) = 30
-        obs_size = self.nrows * self.ncols + 2 + 2 + 1
+        # 25 (grid) + 2 (ca_params) + 2 (position) + 1 (freeze)
+        #   + 4 (fire awareness: dist, direction_r, direction_c, fire_count) = 34
+        obs_size = self.nrows * self.ncols + 2 + 2 + 1 + 4
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(obs_size,), dtype=np.float32
+            low=-1.0, high=1.0, shape=(obs_size,), dtype=np.float32
         )
         # Action space inherited: Discrete(9)
 
@@ -63,6 +66,7 @@ class ForestFireWrapper(gym.Wrapper):
     def reset(self, seed=None, options=None):
         obs, info = self.env.reset(seed=seed, options=options)
         self._current_step = 0
+        self._prev_fire_count = int(np.sum(self._inner.grid == FIRE))
         return self._flatten(obs), info
 
     def step(self, action):
@@ -77,23 +81,28 @@ class ForestFireWrapper(gym.Wrapper):
         info["success"] = fire_remaining == 0
         info["trees_remaining"] = int(np.sum(grid == TREE))
 
-        # Reward shaping: amplify the signal from the agent's actions.
-        # The base reward (trees - fires)/25 is dominated by stochastic
-        # fire spawning. We add a direct bonus for extinguishing fire
-        # and a penalty for being far from any fire.
+        # Reward shaping: the base reward (trees - fires)/25 is dominated
+        # by stochastic fire spawning. We layer on action-driven signals
+        # with fire extinguishing as the dominant incentive.
         shaped_reward = float(reward)
 
-        # Bonus for extinguishing a fire cell (the "hit" signal)
+        # Dominant signal: big reward for extinguishing a fire cell
         if info.get("hit", False):
-            shaped_reward += 2.0
+            shaped_reward += 10.0
 
-        # Small proximity reward: encourage moving toward fire
-        if fire_remaining > 0:
-            r, c = self.agent_pos
-            fire_positions = np.argwhere(grid == FIRE)
-            min_dist = np.min(np.abs(fire_positions - [r, c]).sum(axis=1))
-            # Reward inversely proportional to distance (max bonus ~0.5 when adjacent)
-            shaped_reward += 0.5 / (1.0 + min_dist)
+        # Reward net fire reduction (captures multi-cell extinguishing)
+        fire_delta = self._prev_fire_count - fire_remaining
+        if fire_delta > 0:
+            shaped_reward += fire_delta * 2.0
+
+        # Bonus for achieving zero fire
+        if fire_remaining == 0:
+            shaped_reward += 5.0
+
+        # Per-step urgency: small penalty proportional to active fires
+        shaped_reward -= fire_remaining * 0.1
+
+        self._prev_fire_count = fire_remaining
 
         if self._current_step >= self._max_steps:
             truncated = True
@@ -117,7 +126,24 @@ class ForestFireWrapper(gym.Wrapper):
             [float(freeze) / max(self._max_freeze, 1)], dtype=np.float32
         )
 
-        return np.concatenate([grid_norm, ca_norm, pos_norm, freeze_norm])
+        # Fire-awareness features: give the agent a "compass" toward fire
+        fire_positions = np.argwhere(grid == FIRE)
+        if len(fire_positions) > 0:
+            pos_arr = np.array([position[0], position[1]])
+            dists = np.abs(fire_positions - pos_arr).sum(axis=1)
+            nearest = fire_positions[np.argmin(dists)]
+            direction = nearest - pos_arr
+
+            fire_features = np.array([
+                float(dists.min()) / self._max_manhattan,
+                float(direction[0]) / max(self.nrows - 1, 1),
+                float(direction[1]) / max(self.ncols - 1, 1),
+                float(len(fire_positions)) / (self.nrows * self.ncols),
+            ], dtype=np.float32)
+        else:
+            fire_features = np.zeros(4, dtype=np.float32)
+
+        return np.concatenate([grid_norm, ca_norm, pos_norm, freeze_norm, fire_features])
 
     # ------------------------------------------------------------------
     # Properties for greedy baseline direct access
