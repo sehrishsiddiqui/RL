@@ -12,6 +12,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.utils import get_linear_fn
 
 from environment.forest_fire_wrapper import ForestFireWrapper
 
@@ -36,7 +37,7 @@ class RewardLoggerCallback(BaseCallback):
         return True
 
 
-def train_ppo(total_timesteps: int = 200_000, seed: int = 42):
+def train_ppo(total_timesteps: int = 500_000, seed: int = 42):
     print(f"\n=== Training PPO | ForestFireHelicopter5x5-v1 ===")
 
     env = Monitor(ForestFireWrapper(max_steps=200, seed=seed))
@@ -59,16 +60,19 @@ def train_ppo(total_timesteps: int = 200_000, seed: int = 42):
     model = PPO(
         policy="MlpPolicy",
         env=env,
-        policy_kwargs=dict(net_arch=[128, 128]),
-        learning_rate=3e-4,
-        n_steps=1024,
-        batch_size=64,
-        n_epochs=15,
-        gamma=0.995,
+        policy_kwargs=dict(
+            net_arch=dict(pi=[256, 256], vf=[256, 256]),
+        ),
+        learning_rate=get_linear_fn(3e-4, 1e-5, 1.0),
+        n_steps=2048,
+        batch_size=128,
+        n_epochs=10,
+        gamma=0.99,
         gae_lambda=0.95,
         clip_range=0.2,
-        ent_coef=0.02,
+        ent_coef=0.01,
         vf_coef=0.5,
+        max_grad_norm=0.5,
         verbose=1,
         seed=seed,
         tensorboard_log=str(SAVE_DIR / "tensorboard"),

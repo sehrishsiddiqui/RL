@@ -36,7 +36,7 @@ class RewardLoggerCallback(BaseCallback):
         return True
 
 
-def train_dqn(total_timesteps: int = 200_000, seed: int = 42):
+def train_dqn(total_timesteps: int = 500_000, seed: int = 42):
     print(f"\n=== Training DQN | ForestFireHelicopter5x5-v1 ===")
 
     env = Monitor(ForestFireWrapper(max_steps=200, seed=seed))
@@ -59,15 +59,15 @@ def train_dqn(total_timesteps: int = 200_000, seed: int = 42):
     model = DQN(
         policy="MlpPolicy",
         env=env,
-        policy_kwargs=dict(net_arch=[128, 128]),
-        learning_rate=5e-4,
+        policy_kwargs=dict(net_arch=[256, 256]),
+        learning_rate=1e-4,
         buffer_size=100_000,
-        learning_starts=2000,
-        batch_size=128,
-        gamma=0.995,
-        exploration_fraction=0.5,
-        exploration_final_eps=0.05,
-        target_update_interval=250,
+        learning_starts=5000,
+        batch_size=256,
+        gamma=0.99,
+        exploration_fraction=0.3,
+        exploration_final_eps=0.02,
+        target_update_interval=1000,
         train_freq=4,
         verbose=1,
         seed=seed,
